@@ -1,16 +1,21 @@
 # WikiTranslator
 
+[![License: GPL v3](https://img.shields.io/badge/license-GPL%203.0-orange)](LICENSE)
+[![TypeScript](https://img.shields.io/badge/TypeScript-3178C6?logo=typescript&logoColor=fff)](#)
+[![Claude Code](https://img.shields.io/badge/Claude%20Code-Skill-blueviolet)](https://claude.ai/code)
+[![AgentSkills](https://img.shields.io/badge/AgentSkills-Standard-green)](https://agentskills.io)
+
 WikiTranslator 是一个专为 AI Agent 设计的维基百科条目翻译工具链，致力于解决 LLM 在翻译复杂条目时容易出现的格式破坏、链接错误以及模板幻觉等问题。
 
 WikiTranslator 目前的主要设计目标是将英文维基百科条目翻译到中文维基百科。
 
 ## 特性
 
-- **引文及标签保护**：预处理时抽离不需要翻译的复杂引文（`{{cite xx}}`系列模板）、标签（`<math>` 等）、逻辑表达式和魔术字，替换为 Placeholder，并在 LLM 翻译完成后重组。
-- **链接与模板翻译映射**：集成类 `link-ts` 小工具功能，将英维内部链接和模板名映射到对应的中文页面名称。
+- **引文及标签保护**：预处理时抽离不需要翻译的复杂引文（`{{cite xx}}` 系列模板）、标签（`<math>` 等）、逻辑表达式和魔术字，替换为 Placeholder，并在 LLM 翻译完成后重组。
+- **链接与模板翻译映射**：集成类 [`link-ts`](https://zh.wikipedia.org/wiki/User:JC1/SR/link-ts.js) 小工具功能，将英维内部链接和模板名映射到对应的中文页面名称。
 - **字词转换组应用**：解析中维通用转换组列表，LLM 判断条目所属的领域并挂载 `{{NoteTA}}` 转换组。
 - **废弃模板清理**：清洗掉对中维无用的模板，如 `{{Short description}}`、`{{Italic title}}` 和 `{{lang-zh}}`。
-- **日期格式转换**：集成类 `MOSNUM DATES` 小工具功能，将英文日期格式转换为 ISO 格式。
+- **日期格式转换**：集成类 [`MOSNUM DATES`](https://zh.wikipedia.org/wiki/User:Vozhuo/Tool/MOSNUM_dates) 小工具功能，将英文日期格式转换为 ISO 格式。
 
 ## 工作模式
 
@@ -50,13 +55,13 @@ console.log(result.translatedWikitext);
   npm run build
   ```
 
-## 依赖
+### 依赖
 
 - [`yaml`](https://github.com/eemeli/yaml): 前置文件解析和状态读写器
 - `Zod`: 数据边界验证
 - [`wikiparser-node`](https://github.com/bhsd-harry/wikiparser-node): 提供 wikitext 解析和 Lint 能力
 
-## To Do
+### To Do
 
 - [ ] 用 AST 重构 parser
 - [ ] 字词转换
