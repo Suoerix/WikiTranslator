@@ -1,0 +1,55 @@
+{
+  "name": "wiki-translator",
+  "version": "1.0.0",
+  "type": "module",
+  "engines": {
+    "node": ">=18.0.0"
+  },
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "require": "./dist/index.cjs",
+      "types": "./dist/index.d.ts"
+    },
+    "./preprocess": {
+      "import": "./dist/preprocess.js",
+      "require": "./dist/preprocess.cjs",
+      "types": "./dist/preprocess.d.ts"
+    },
+    "./postprocess": {
+      "import": "./dist/postprocess.js",
+      "require": "./dist/postprocess.cjs",
+      "types": "./dist/postprocess.d.ts"
+    },
+    "./standalone": {
+      "import": "./dist/standalone.js",
+      "require": "./dist/standalone.cjs",
+      "types": "./dist/standalone.d.ts"
+    }
+  },
+  "scripts": {
+    "build": "vite build",
+    "dev": "vite build --watch",
+    "test": "vitest",
+    "test:ui": "vitest --ui",
+    "lint": "tsc --noEmit"
+  },
+  "dependencies": {
+    "@ai-sdk/anthropic": "^1.1.9",
+    "@ai-sdk/openai": "^1.1.13",
+    "ai": "^4.1.41",
+    "wikiparser-node": "^1.2.2",
+    "yaml": "^2.8.3",
+    "zod": "^3.24.2"
+  },
+  "devDependencies": {
+    "@types/node": "^20.12.7",
+    "tsx": "^4.21.0",
+    "typescript": "^5.4.5",
+    "vite": "^5.2.8",
+    "vite-plugin-dts": "^3.8.3",
+    "vitest": "^1.4.0"
+  }
+}
