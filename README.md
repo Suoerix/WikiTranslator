@@ -38,9 +38,13 @@ console.log(result.translatedWikitext);
 
 ### Agent Skill（IoC）
 
-提供一个标准 `SKILL.md` 文件，可将整个仓库 clone 至本地 skills 目录以安装至 Claude Code 等 CLI 工具中。
+WikiTranslator 提供一个标准的 `SKILL.md` 文件，可将整个仓库 clone 至本地 skills 目录以安装至 Claude Code 等 CLI 工具中。
 
-原理：WikiTranslator 提供的工具链以 preprocess 和 postprocess 两个入口点作为纯函数供 Agent 调用（Tool as Pure Function）。preprocess 过程生成一个单一 `.wikitext` 任务文件，顶部 YAML Frontmatter 用于传递配置信息（File as State），翻译任务 prompt 采用 HTML 注释格式置于预处理后的 wikitext 之前（File as Mindflow Engine）。Agent 编辑任务文件后，调用 postprocess 生成最终的 `.wikitext` 文件。
+```bash
+npx skills add https://github.com/Suoerix/WikiTranslator --skill wiki-translator
+```
+
+Agent Skill 模式工作原理：WikiTranslator 提供的工具链以 preprocess 和 postprocess 两个入口点作为纯函数供 Agent 调用（Tool as Pure Function）。preprocess 过程生成一个单一 `.wikitext` 任务文件，顶部 YAML Frontmatter 用于传递配置信息（File as State），翻译任务 prompt 采用 HTML 注释格式置于预处理后的 wikitext 之前（File as Mindflow Engine）。Agent 编辑任务文件后，调用 postprocess 生成最终的 `.wikitext` 文件。
 
 ## 开发
 
@@ -67,6 +71,23 @@ console.log(result.translatedWikitext);
 - [ ] 字词转换
   - [ ] 粗颗粒度：实现通用转换组列表攫取、翻译后文本词典比对
   - [ ] 细颗粒度：应支持页面链接的字词转换，应集成类似 [`Module:Conversion rule extractor`](https://zh.wikipedia.org/wiki/Module:Conversion_rule_extractor) 的功能
+- [ ] 翻译
+  - [ ] 合规性：preprocess 时应记录 sourceArticle 的来源版本和链接并在 api 导出
+  - [ ] 应允许 agent 蒸馏格式手册为翻译提示词或创建为新 skills，对格式手册进行版本管理以支持自进化
+
+## 免责声明
+
+使用本工具时视为您已阅读并同意以下内容。
+
+- [T:工具警告](https://zh.wikipedia.org/wiki/Template:%E5%B7%A5%E5%85%B7%E8%AD%A6%E5%91%8A)：
+
+  > 使用本工具进行工作时，必须确保您的操作不危害社群及不违反共识，且您对您的操作完全负责。
+  > 请务必了解维基百科的方针与指引，并且在方针与指引许可的范围内使用本工具。
+  > 如果您无法做到以上要求，请停止使用本工具。
+
+- [WP:LLM](https://zh.wikipedia.org/wiki/Wikipedia:%E5%A4%A7%E8%AF%AD%E8%A8%80%E6%A8%A1%E5%9E%8B)
+- [WP:翻译](https://zh.wikipedia.org/wiki/Wikipedia:%E7%BF%BB%E8%AD%AF)（内容指引）
+
 
 ## License
 
