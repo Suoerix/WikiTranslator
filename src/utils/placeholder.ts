@@ -1,22 +1,34 @@
 export class PlaceholderHelper {
+  /**
+   * Compact @@TYPE:N@@ format to minimise token usage.
+   * R  = ref (cite inside <ref>)
+   * M  = math
+   * C  = code / pre
+   * SH = syntaxhighlight
+   * PF = parser function / magic word
+   * EL = external link  (used by Signpost layer)
+   * IW = interwiki link (used by Signpost layer)
+   */
   private static readonly prefixes = {
-    ref: '__REF_PLACEHOLDER_',
-    math: '__MATH_PLACEHOLDER_',
-    code: '__CODE_PLACEHOLDER_',
-    syntaxhighlight: '__SYNTAXHIGHLIGHT_PLACEHOLDER_',
-    parserFunction: '__PARSER_FUNCTION_'
-  };
+    ref:             '@@R:',
+    math:            '@@M:',
+    code:            '@@C:',
+    syntaxhighlight: '@@SH:',
+    parserFunction:  '@@PF:',
+    externalLink:    '@@EL:',
+    interwiki:       '@@IW:',
+  } as const;
 
   static createPlaceholder(type: keyof typeof PlaceholderHelper.prefixes, index: number): string {
-    return `${this.prefixes[type]}${index.toString().padStart(3, '0')}__`;
+    return `${this.prefixes[type]}${index}@@`;
   }
 
   static isPlaceholder(text: string): boolean {
-    return Object.values(this.prefixes).some(prefix => text.includes(prefix));
+    return /@@(?:R|M|C|SH|PF|EL|IW):\d+@@/.test(text);
   }
 
   static extractPlaceholders(text: string): string[] {
-    const rx = /__(?:REF|MATH|CODE|SYNTAXHIGHLIGHT|PARSER_FUNCTION)_PLACEHOLDER_\d+__/g;
+    const rx = /@@(?:R|M|C|SH|PF|EL|IW):\d+@@/g;
     return text.match(rx) || [];
   }
 }

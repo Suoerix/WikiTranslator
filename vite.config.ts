@@ -57,6 +57,7 @@ export default defineConfig({
         'path',
         'url',
         'crypto',
+        'util',
       ],
     },
     sourcemap: true,

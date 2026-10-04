@@ -38,6 +38,7 @@
   },
   "dependencies": {
     "@ai-sdk/anthropic": "^1.1.9",
+    "@ai-sdk/google": "^1.1.9",
     "@ai-sdk/openai": "^1.1.13",
     "ai": "^4.1.41",
     "wikiparser-node": "^1.2.2",
@@ -45,9 +46,9 @@
     "zod": "^3.24.2"
   },
   "devDependencies": {
-    "@types/node": "^20.12.7",
+    "@types/node": "^20.19.39",
     "tsx": "^4.21.0",
-    "typescript": "^5.4.5",
+    "typescript": "^5.9.3",
     "vite": "^5.2.8",
     "vite-plugin-dts": "^3.8.3",
     "vitest": "^1.4.0"

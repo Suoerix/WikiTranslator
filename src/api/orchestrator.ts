@@ -17,6 +17,7 @@ export class Orchestrator {
 
   async execute(config: TranslationConfig): Promise<TranslationResult> {
     const finalConfig = { ...this.baseConfig, ...config };
+    const skipModules = new Set(finalConfig.skipModules || []);
     const llmOptions = {
       provider: finalConfig.llmProvider,
       model: finalConfig.llmModel,
@@ -25,13 +26,10 @@ export class Orchestrator {
     const wikiClient = new WikipediaClient();
     const preprocessor = new PreprocessingModule();
     const translationModule = new TranslationModule();
-    const conversionModule = new ConversionModule();
     const templateModule = new TemplateProcessingModule();
     const dateModule = new DateNormalizationModule();
     const linkModule = new LinkReplacementModule();
     const syntaxModule = new SyntaxCheckModule();
-
-    const startTokens = 0; // naive stub since token counting requires tiktoken
 
     // 1. Fetch
     const wikitext = await wikiClient.getWikitext(finalConfig.sourceLanguage, finalConfig.sourceArticle);
@@ -39,27 +37,53 @@ export class Orchestrator {
     // 2. Preprocess
     const { cleanedWikitext, placeholderMap, removedCategories } = preprocessor.preprocess(wikitext);
 
+    // Merge glossaries
+    const mergedGlossary = {
+      ...(finalConfig.glossary || {}),
+      ...(finalConfig.additionalGlossary || {}),
+    };
+
     // 3. Translate
     let text = await translationModule.translate(
       cleanedWikitext, 
       finalConfig.sourceLanguage, 
-      finalConfig.glossary, 
+      mergedGlossary, 
       finalConfig.styleGuide,
       llmOptions
     );
 
-    // 4. Conversion Groups
-    text = await conversionModule.applyConversionGroups(text, llmOptions);
+    // 4. Conversion Groups (skippable)
+    if (!skipModules.has('conversion')) {
+      const conversionModule = new ConversionModule();
+      text = await conversionModule.applyConversionGroups(text, llmOptions);
+    }
 
-    // 5. Templates
-    text = await templateModule.processTemplates(text, placeholderMap, finalConfig.sourceLanguage);
+    // 5. Templates (skippable)
+    if (!skipModules.has('templates')) {
+      text = await templateModule.processTemplates(
+        text, placeholderMap, finalConfig.sourceLanguage,
+        finalConfig.templateOverrides
+      );
+    } else {
+      // Still restore placeholders even if skipping template processing
+      for (const [placeholder, original] of placeholderMap.entries()) {
+        text = text.replace(placeholder, () => original);
+      }
+    }
 
-    // 6. Dates
-    text = dateModule.normalizeDates(text);
+    // 6. Dates (skippable)
+    if (!skipModules.has('dates')) {
+      text = dateModule.normalizeDates(text);
+    }
 
-    // 7. Links
-    const linkResult = await linkModule.replaceLinks(text, removedCategories, finalConfig.sourceLanguage);
-    text = linkResult.wikitext;
+    // 7. Links (skippable)
+    if (!skipModules.has('links')) {
+      const linkResult = await linkModule.replaceLinks(
+        text, removedCategories, finalConfig.sourceLanguage,
+        finalConfig.linkReplacementOptions
+      );
+      text = linkResult.wikitext;
+    }
 
     // 8. Syntax Check
     const validationReport = syntaxModule.validate(text);
@@ -70,7 +94,7 @@ export class Orchestrator {
       metadata: {
         timestamp: new Date().toISOString(),
         llmModel: finalConfig.llmModel || 'default',
-        tokensUsed: 0, // mocked
+        tokensUsed: 0,
       }
     };
   }

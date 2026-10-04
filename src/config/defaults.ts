@@ -4,7 +4,7 @@ export const DEFAULTS = {
   keepOriginalDisplay: true,
   fallbackToTransliteration: true,
   preserveUnknownTerms: true,
-  apiRetries: 3,
+  apiRetries: 10,
   apiRetryBaseDelay: 1000,
   batchQueryLimit: 50,
 };
