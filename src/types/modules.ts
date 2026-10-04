@@ -9,6 +9,11 @@ export interface PreprocessingResult {
 export interface LinkReplacementResult {
   wikitext: string;
   translatedCategories: Category[];
+  /**
+   * Placeholders generated for special pages (e.g. @@SP:0@@ → Special:Diff/123).
+   * Merge into the caller's placeholderMap so postprocessing restores them.
+   */
+  specialPlaceholders: Map<string, string>;
   linkStats: {
     totalLinks: number;
     replacedLinks: number;

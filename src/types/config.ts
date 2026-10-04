@@ -13,6 +13,29 @@ export interface LinkReplacementOptions {
   skipTranswiki?: boolean;
   /** Custom path prefixes to skip (e.g., ["Wikipedia:Wikipedia Signpost/"]) */
   skipPathPrefixes?: string[];
+  /**
+   * 'translate-all' (default): every link is looked up and translated.
+   * 'preserve-namespaces': non-main-namespace links are NOT translated.
+   *   They get the interwiki prefix (e.g. [[:en:WP:Village pump]]), optionally
+   *   followed by an HTML comment with the Chinese counterpart
+   *   (e.g. [[:en:WP:Village pump]]<!--Wikipedia:互助客栈-->) so the LLM can
+   *   decide whether to swap it in.
+   */
+  namespaceMode?: 'translate-all' | 'preserve-namespaces';
+  /** Interwiki prefix used in preserve-namespaces mode. Default ':en:'. */
+  interwikiPrefix?: string;
+  /**
+   * When a main-namespace link is replaced and the original had no pipe,
+   * keep the original target as the display name: [[贝尔格莱德|Belgrade]].
+   */
+  keepUnpipedDisplay?: boolean;
+  /**
+   * Namespaces whose links become placeholders (default: Special, Media).
+   * Placeholder: @@SP:N@@ (or [[@@SP:N@@|display]] when piped).
+   */
+  placeholderNamespaces?: string[];
+  /** Extra namespace names/aliases treated as non-main in preserve mode. */
+  knownNamespaces?: string[];
 }
 
 export interface TranslationConfig {

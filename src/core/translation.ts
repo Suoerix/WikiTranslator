@@ -54,15 +54,6 @@ export class TranslationModule {
 
     fullPrompt += `\n\nPlease translate the following title and body. Return a JSON object with "translatedTitle" and "translatedBody" fields.\n\nTitle to translate:\n${content.title}\n\nBody to translate:\n${content.body}`;
 
-    console.log(`[DEBUG] Full Prompt Length: ${fullPrompt.length}`);
-    try {
-      const fs = await import('fs');
-      fs.writeFileSync('last_prompt.txt', fullPrompt);
-      console.log(`[DEBUG] Full Prompt saved to last_prompt.txt`);
-    } catch (e) {
-      // ignore
-    }
-
     const schema = z.object({
       translatedTitle: z.string().describe('The translated title in Simplified Chinese'),
       translatedBody: z.string().describe('The translated body wikitext in Simplified Chinese'),

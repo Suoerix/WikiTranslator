@@ -3,7 +3,8 @@ import { DEFAULTS } from '../config/defaults';
 export async function retryWithBackoff<T>(
   fn: () => Promise<T>,
   maxRetries: number = DEFAULTS.apiRetries,
-  baseDelay: number = DEFAULTS.apiRetryBaseDelay
+  baseDelay: number = DEFAULTS.apiRetryBaseDelay,
+  shouldRetry: (err: any) => boolean = () => true,
 ): Promise<T> {
   let lastError: any;
   for (let i = 0; i < maxRetries; i++) {
@@ -11,6 +12,10 @@ export async function retryWithBackoff<T>(
       return await fn();
     } catch (error: any) {
       lastError = error;
+      if (!shouldRetry(error)) {
+        console.log(`[Retry] Non-retryable error, giving up: ${error.message}`);
+        throw error;
+      }
       if (i === maxRetries - 1) throw error;
       const delay = baseDelay * Math.pow(2, i) + Math.random() * 100; // jitter
       console.log(`[Retry] Attempt ${i + 1} failed: ${error.message}. Retrying in ${(delay / 1000).toFixed(1)}s...`);

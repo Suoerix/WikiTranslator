@@ -5,6 +5,26 @@ import { LinkParser } from '../parsers/link';
 import { WikipediaClient } from '../clients/wikipedia';
 import { DEFAULTS } from '../config/defaults';
 
+/** Common English Wikipedia non-main namespaces (lowercase). */
+const EN_NON_MAIN_NAMESPACES = new Set([
+  'talk', 'user', 'user talk', 'user wiki', 'user wiki talk', 'ut',
+  'wikipedia', 'wikipedia talk', 'wp', 'wt', 'project', 'project talk',
+  'file', 'file talk', 'image', 'image talk',
+  'mediawiki', 'mediawiki talk', 'template', 'template talk', 't',
+  'help', 'help talk', 'h', 'category', 'category talk', 'cat',
+  'portal', 'portal talk', 'p', 'draft', 'draft talk',
+  'timedtext', 'timedtext talk', 'module', 'module talk',
+  'gadget', 'gadget talk', 'gadget definition', 'gadget definition talk',
+  'special', 'media', 'topic', 'wikipedia_library', 'wl',
+]);
+
+/** Namespace alias → canonical name (for langlinks lookups). */
+const NS_ALIAS_CANONICAL: Record<string, string> = {
+  'wp': 'Wikipedia', 'wt': 'Wikipedia talk', 'project': 'Wikipedia', 'project talk': 'Wikipedia talk',
+  'p': 'Portal', 'cat': 'Category', 't': 'Template', 'h': 'Help',
+  'image': 'File', 'image talk': 'File talk', 'ut': 'User talk', 'wl': 'Wikipedia Library',
+};
+
 export class LinkReplacementModule {
   private wikiClient: WikipediaClient;
 
@@ -13,7 +33,7 @@ export class LinkReplacementModule {
   }
 
   /**
-   * Determine if a link target belongs to a given namespace.
+   * Determine if a link target starts with a namespace.
    */
   private getNamespace(target: string): { namespace: string; rest: string } | null {
     const colonIdx = target.indexOf(':');
@@ -30,14 +50,38 @@ export class LinkReplacementModule {
     return target.startsWith(':');
   }
 
+  /**
+   * Normalize a namespace alias to its canonical form for lookups:
+   * 'WP:Village pump' → 'Wikipedia:Village pump'
+   */
+  private normalizeNsAlias(target: string): string {
+    const colonIdx = target.indexOf(':');
+    if (colonIdx <= 0) return target;
+    const ns = target.slice(0, colonIdx).toLowerCase();
+    const canonical = NS_ALIAS_CANONICAL[ns];
+    if (canonical && canonical.toLowerCase() !== ns) {
+      return canonical + target.slice(colonIdx);
+    }
+    return target;
+  }
+
+  private isNonMainNamespace(target: string, extraNamespaces?: string[]): boolean {
+    const ns = this.getNamespace(target);
+    if (!ns) return false;
+    const nsLower = ns.namespace.toLowerCase();
+    if (EN_NON_MAIN_NAMESPACES.has(nsLower)) return true;
+    if (extraNamespaces?.some(n => n.toLowerCase() === nsLower)) return true;
+    return false;
+  }
+
   private makeLink(
     target: string,
     display: string | undefined,
     chineseTarget: string | null | undefined,
-    sourceLang: string
+    sourceLang: string,
+    keepUnpipedDisplay = false
   ): string {
     const isPiped = display && display !== target;
-    const dispStr = display ? (isPiped ? `|${display}` : '') : '';
 
     if (chineseTarget === null) {
       if (DEFAULTS.useTslTemplate) {
@@ -50,28 +94,25 @@ export class LinkReplacementModule {
           : `{{link-${sourceLang}||${target}}}`;
       }
     } else if (chineseTarget === undefined) {
-      return `[[${target}${dispStr}]]`;
+      // No translation found and no tsl requested: keep as-is
+      return `[[${target}${display ? `|${display}` : ''}]]`;
     } else {
-      let finalLink = '';
-      if (DEFAULTS.keepOriginalDisplay && isPiped) {
-        finalLink = `[[${chineseTarget}|${display}]]`;
-      } else {
-        finalLink = `[[${chineseTarget}]]`;
+      if (isPiped) {
+        return `[[${chineseTarget}|${display}]]`;
       }
-      
-      if (finalLink.includes('|') && finalLink.startsWith('[[') && finalLink.endsWith(']]')) {
-        const parts = finalLink.slice(2, -2).split('|');
-        if (parts.length === 2 && parts[0] === parts[1]) {
-          finalLink = `[[${parts[0]}]]`;
-        }
+      if (keepUnpipedDisplay) {
+        // Preserve the original target as display name so the LLM can translate it:
+        // [[Belgrade]] → [[贝尔格莱德|Belgrade]]
+        const originalDisplay = target.replace(/_/g, ' ');
+        return `[[${chineseTarget}|${originalDisplay}]]`;
       }
-      return finalLink;
+      return `[[${chineseTarget}]]`;
     }
   }
 
   private appendCategories(wikitext: string, categories: Category[]): string {
     if (categories.length === 0) return wikitext;
-    
+
     const categoryLines = categories.map(cat => {
       if (cat.sortKey) {
         return `[[Category:${cat.name}|${cat.sortKey}]]`;
@@ -89,13 +130,32 @@ export class LinkReplacementModule {
     sourceLang: string = 'en',
     options?: LinkReplacementOptions
   ): Promise<LinkReplacementResult> {
-    const links = LinkParser.extractLinks(wikitext);
+    const preserveMode = options?.namespaceMode === 'preserve-namespaces';
+    const interwikiPrefix = options?.interwikiPrefix ?? ':en:';
+    const placeholderNamespaces = (options?.placeholderNamespaces ?? ['Special', 'Media']).map(n => n.toLowerCase());
+    const specialPlaceholders = new Map<string, string>();
+
+    // Apply namespace shortening FIRST, so extraction and replacement operate
+    // on the same (final) text form.
+    let result = wikitext;
+    if (options?.shortenNamespaces) {
+      for (const [longNs, shortNs] of options.shortenNamespaces.entries()) {
+        result = result.replace(
+          new RegExp(`\\[\\[${longNs}:`, 'g'),
+          `[[${shortNs}:`
+        );
+      }
+    }
+
+    const links = LinkParser.extractLinks(result);
     const uniqueLinkTargets = Array.from(new Set(links.map(l => l.target)));
 
-    // Partition links based on namespace rules
-    const needLookup: string[] = [];
-    const skipSet = new Set<string>();      // Links to keep as-is
-    const prefixMap = new Map<string, string>(); // Links to prefix
+    // Partition links based on rules
+    const needLookup: string[] = [];           // main-namespace: langlinks lookup (canonical form)
+    const skipSet = new Set<string>();         // keep as-is
+    const prefixMap = new Map<string, string>();// legacy prefixNamespaces handling
+    const preserveSet = new Set<string>();     // preserve-namespaces mode: :en: + optional comment
+    const specialSet = new Set<string>();      // → @@SP:N@@ placeholder
 
     for (const target of uniqueLinkTargets) {
       // Skip placeholders (e.g. @@IW:0@@, @@EL:1@@)
@@ -104,65 +164,56 @@ export class LinkReplacementModule {
         continue;
       }
 
-      // Check transwiki (any link starting with : is considered transwiki/special)
+      // Skip transwiki (any link starting with : is considered transwiki/special)
       if (options?.skipTranswiki && this.isTranswikiLink(target)) {
         skipSet.add(target);
         continue;
       }
 
-      const ns = this.getNamespace(target);
-      if (ns) {
-        // Check skipNamespaces
-        if (options?.skipNamespaces?.includes(ns.namespace)) {
-          skipSet.add(target);
-          continue;
-        }
-        // Check prefixNamespaces
-        if (options?.prefixNamespaces?.has(ns.namespace)) {
-          const prefix = options.prefixNamespaces.get(ns.namespace)!;
-          prefixMap.set(target, prefix);
-          continue;
-        }
-      }
+      const canonicalTarget = this.normalizeNsAlias(target);
 
-      // Normalise WP: alias → Wikipedia: for consistent Wikidata lookups
-      const normalizedTarget = target.startsWith('WP:')
-        ? 'Wikipedia:' + target.slice(3)
-        : target;
-
-      // Check task-specific path skips (provided via options)
-      const shouldSkipPath = options?.skipPathPrefixes?.some(p => normalizedTarget.startsWith(p));
+      // Task-specific path skips (checked against canonical form)
+      const shouldSkipPath = options?.skipPathPrefixes?.some(p => canonicalTarget.startsWith(p));
       if (shouldSkipPath) {
         skipSet.add(target);
         continue;
       }
 
-      // Check linkOverrides (use normalized key too)
-      if (options?.linkOverrides?.has(target) || options?.linkOverrides?.has(normalizedTarget)) {
+      // linkOverrides go through the regular replacement path below
+      if (options?.linkOverrides?.has(target) || options?.linkOverrides?.has(canonicalTarget)) {
         continue;
       }
 
-      needLookup.push(normalizedTarget === target ? target : normalizedTarget);
-      // Track alias mapping so we can restore the original target in the output
-      if (normalizedTarget !== target) {
-        (this as any)._wpAliasMap = (this as any)._wpAliasMap || new Map<string, string>();
-        (this as any)._wpAliasMap.set(normalizedTarget, target);
+      const ns = this.getNamespace(target);
+
+      // Check skipNamespaces
+      if (ns && options?.skipNamespaces?.some(n => n.toLowerCase() === ns.namespace.toLowerCase())) {
+        skipSet.add(target);
+        continue;
       }
+
+      // Legacy prefixNamespaces (e.g. User → :en:User)
+      if (ns && options?.prefixNamespaces?.has(ns.namespace)) {
+        prefixMap.set(target, options.prefixNamespaces.get(ns.namespace)!);
+        continue;
+      }
+
+      // preserve-namespaces mode: non-main namespaces are never translated
+      if (preserveMode && this.isNonMainNamespace(target, options?.knownNamespaces)) {
+        const nsLower = ns!.namespace.toLowerCase();
+        if (placeholderNamespaces.includes(nsLower)) {
+          specialSet.add(target);
+        } else {
+          preserveSet.add(target);
+          needLookup.push(canonicalTarget); // for the <!--中文页--> comment
+        }
+        continue;
+      }
+
+      needLookup.push(canonicalTarget);
     }
 
-    // Apply namespace shortening to wikitext before link replacement
-    let result = wikitext;
-    if (options?.shortenNamespaces) {
-      for (const [longNs, shortNs] of options.shortenNamespaces.entries()) {
-        // Replace in link targets: [[Wikipedia:X → [[WP:X
-        result = result.replace(
-          new RegExp(`\\[\\[${longNs}:`, 'g'),
-          `[[${shortNs}:`
-        );
-      }
-    }
-
-    // Query Wikidata for links that need lookup
+    // Query langlinks for all lookups (main-namespace replacement + comments)
     const translationMap = new Map<string, string>();
     if (needLookup.length > 0) {
       const langlinks = await this.wikiClient.getLangLinks(sourceLang, needLookup, 'zh');
@@ -174,46 +225,64 @@ export class LinkReplacementModule {
 
     let statsReplaced = 0;
     let statsTsl = 0;
+    let spCounter = 0;
 
     for (const link of links) {
-      // Skip transwiki and skipped-namespace links
       if (skipSet.has(link.target)) continue;
 
       let newLinkText = '';
+      const canonicalTarget = this.normalizeNsAlias(link.target);
+      const pipePart = link.display ? `|${link.display}` : '';
 
-      // Handle prefixed namespaces (e.g. User: → :en:User:)
-      if (prefixMap.has(link.target)) {
-        const prefix = prefixMap.get(link.target)!;
-        const targetWithoutNs = link.target.split(':').pop();
-        const displayPart = link.display ? `|${link.display}` : `|${targetWithoutNs}`;
-        newLinkText = `[[${prefix}${targetWithoutNs}${displayPart}]]`;
+      // Special pages → placeholder (display text stays translatable).
+      // The placeholder value carries the interwiki prefix so the restored
+      // link points at the source wiki: [[:en:Special:Diff/123|diff]].
+      if (specialSet.has(link.target)) {
+        const ph = `@@SP:${spCounter}@@`;
+        spCounter++;
+        specialPlaceholders.set(ph, `${interwikiPrefix}${link.target}`);
+        newLinkText = `[[${ph}${pipePart}]]`;
+      }
+      // preserve-namespaces: [[:en:target|display]]<!--中文页-->
+      else if (preserveSet.has(link.target)) {
+        const zhTarget = translationMap.get(canonicalTarget);
+        newLinkText = `[[${interwikiPrefix}${link.target}${pipePart}]]`;
+        if (zhTarget) {
+          newLinkText += `<!--${zhTarget}-->`;
+        }
         statsReplaced++;
       }
-      // Handle linkOverrides
-      else if (options?.linkOverrides?.has(link.target)) {
-        const zhTarget = options.linkOverrides.get(link.target)!;
-        newLinkText = this.makeLink(link.target, link.display, zhTarget || null, sourceLang);
+      // Legacy prefixed namespaces (e.g. User: → :en:User:)
+      else if (prefixMap.has(link.target)) {
+        const prefix = prefixMap.get(link.target)!;
+        const ns = this.getNamespace(link.target)!;
+        const displayPart = link.display ? `|${link.display}` : `|${ns.rest}`;
+        // prefix may carry the namespace (":en:User") + rest of the title
+        newLinkText = `[[${prefix}:${ns.rest}${displayPart}]]`;
+        statsReplaced++;
+      }
+      // linkOverrides
+      else if (options?.linkOverrides?.has(link.target) || options?.linkOverrides?.has(canonicalTarget)) {
+        const zhTarget = options.linkOverrides.get(link.target) ?? options.linkOverrides.get(canonicalTarget)!;
+        newLinkText = this.makeLink(link.target, link.display, zhTarget || null, sourceLang, options?.keepUnpipedDisplay);
         if (zhTarget) statsReplaced++; else statsTsl++;
       }
-      // Handle Wikidata results (also check normalized WP: → Wikipedia: alias)
+      // Wikidata/langlinks results
       else {
-        const normalizedKey = link.target.startsWith('WP:')
-          ? 'Wikipedia:' + link.target.slice(3)
-          : link.target;
-        const zhTarget = translationMap.get(link.target) ?? translationMap.get(normalizedKey);
+        const zhTarget = translationMap.get(canonicalTarget);
         if (zhTarget === '') {
-          newLinkText = this.makeLink(link.target, link.display, null, sourceLang);
+          newLinkText = this.makeLink(link.target, link.display, null, sourceLang, options?.keepUnpipedDisplay);
           statsTsl++;
         } else if (zhTarget) {
-          newLinkText = this.makeLink(link.target, link.display, zhTarget, sourceLang);
+          newLinkText = this.makeLink(link.target, link.display, zhTarget, sourceLang, options?.keepUnpipedDisplay);
           statsReplaced++;
         } else {
-          newLinkText = this.makeLink(link.target, link.display, undefined, sourceLang);
+          newLinkText = this.makeLink(link.target, link.display, undefined, sourceLang, options?.keepUnpipedDisplay);
         }
       }
 
       if (newLinkText) {
-        const originalPattern = `[[${link.target}${link.display ? `|${link.display}` : ''}]]`;
+        const originalPattern = `[[${link.target}${pipePart}]]`;
         result = result.replace(originalPattern, newLinkText);
       }
     }
@@ -223,7 +292,7 @@ export class LinkReplacementModule {
     if (removedCategories.length > 0) {
       const catNames = removedCategories.map(c => `Category:${c.name}`);
       const catLanglinks = await this.wikiClient.getLangLinks(sourceLang, catNames, 'zh');
-      
+
       for (const cat of removedCategories) {
         const zh = catLanglinks.get(`Category:${cat.name}`);
         if (zh) {
@@ -240,6 +309,7 @@ export class LinkReplacementModule {
     return {
       wikitext: result,
       translatedCategories,
+      specialPlaceholders,
       linkStats: {
         totalLinks: links.length,
         replacedLinks: statsReplaced,
