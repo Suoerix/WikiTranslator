@@ -63,6 +63,18 @@ export class TranslationModule {
   }
 
   /**
+   * Generic structured request: takes an arbitrary zod schema.
+   * The JSON output instruction is appended by the LLM client.
+   */
+  async completeStructured<T>(
+    prompt: string,
+    schema: z.Schema<T>,
+    llmOptions?: LLMOptions
+  ): Promise<T> {
+    return this.llmClient.completeObject(prompt, schema, llmOptions);
+  }
+
+  /**
    * Body-only structured translation for continuation chunks.
    * Only asks for translatedBody — no title, saving tokens and avoiding
    * spurious translated titles like "（续）".
