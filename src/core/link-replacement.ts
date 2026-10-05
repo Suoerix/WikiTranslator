@@ -244,9 +244,12 @@ export class LinkReplacementModule {
         newLinkText = `[[${ph}${pipePart}]]`;
       }
       // preserve-namespaces: [[:en:target|display]]<!--中文页-->
+      // Unpiped links get the original target as display name so they render
+      // nicely on the target wiki: [[User:XXX]] → [[:en:User:XXX|User:XXX]]
       else if (preserveSet.has(link.target)) {
         const zhTarget = translationMap.get(canonicalTarget);
-        newLinkText = `[[${interwikiPrefix}${link.target}${pipePart}]]`;
+        const pipe = link.display ? `|${link.display}` : `|${link.target}`;
+        newLinkText = `[[${interwikiPrefix}${link.target}${pipe}]]`;
         if (zhTarget) {
           newLinkText += `<!--${zhTarget}-->`;
         }
