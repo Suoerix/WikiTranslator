@@ -38,7 +38,10 @@ export class PreprocessingModule {
       citeInner = citeInner.replace(/\[\[([^\]|]+)\]\]/g, '[[$1|$1]]');
 
       const placeholder = PlaceholderHelper.createPlaceholder('ref', refCount++);
-      cleanedWikitext = cleanedWikitext.replace(ref.refFull, `<ref>${placeholder}</ref>`);
+      cleanedWikitext = cleanedWikitext.replace(ref.refFull, (matched) => {
+        const tagContent = matched.slice(0, matched.indexOf('>') + 1);
+        return `${tagContent}${placeholder}</ref>`;
+      });
       placeholderMap.set(placeholder, citeInner);
     }
 
